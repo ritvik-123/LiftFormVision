@@ -1,11 +1,13 @@
 """
 OHP — Stage 1 (runs in the OHPBonus venv: mediapipe only, no TensorFlow).
 Ported from OHP_bonus_features.ipynb::extract_ohp_dual + analyze_upper_body.
-Streams progress JSON lines while extracting.
+Also draws the knee-branch (VIDEO mode) skeleton onto each frame and
+writes a browser-playable annotated overlay video alongside extraction.
 Usage: python ohp_extract.py <video_path> <intermediate_out_path>
 """
 import json
 import sys
+import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -13,8 +15,13 @@ import cv2
 import mediapipe as mp
 import numpy as np
 import pandas as pd
+from mediapipe.framework.formats import landmark_pb2
 from mediapipe.tasks.python import BaseOptions
 from mediapipe.tasks.python.vision import PoseLandmarker, PoseLandmarkerOptions, RunningMode
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))  # app root
+import config
+from overlay import open_overlay_writer, write_overlay_frame, close_overlay_writer
 
 MODEL_PATH = Path(__file__).resolve().parent / "models" / "pose_landmarker_full.task"
 
@@ -28,6 +35,9 @@ RULES = {
     "grip_narrow": 1.23, "grip_wide": 1.94,
     "stack_warning": 0.55, "wrist_asymmetry": 0.822,
 }
+
+drawing = mp.solutions.drawing_utils
+POSE_CONNECTIONS = mp.solutions.pose.POSE_CONNECTIONS
 
 
 @dataclass
@@ -73,11 +83,23 @@ def get_geometry(lm):
     }
 
 
-def extract_ohp_dual(video_path):
+def draw_skeleton(bgr, pose_landmarks):
+    """pose_landmarks: list of mediapipe.tasks landmark objects (x, y, z, visibility)."""
+    proto = landmark_pb2.NormalizedLandmarkList(
+        landmark=[landmark_pb2.NormalizedLandmark(x=lm.x, y=lm.y, z=lm.z) for lm in pose_landmarks]
+    )
+    drawing.draw_landmarks(bgr, proto, POSE_CONNECTIONS)
+
+
+def extract_ohp_dual(video_path, overlay_path):
     video_path = Path(video_path)
     cap = cv2.VideoCapture(str(video_path))
     fps = cap.get(cv2.CAP_PROP_FPS) or 30
     total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT)) or None
+    w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+    h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+
+    overlay_proc = open_overlay_writer(overlay_path, w, h, fps) if w and h else None
 
     video_frames, bonus_rows = [], []
 
@@ -100,7 +122,7 @@ def extract_ohp_dual(video_path):
             ok, bgr = cap.read()
             if not ok:
                 break
-            h, w = bgr.shape[:2]
+            fh, fw = bgr.shape[:2]
             rgb = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
             image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
 
@@ -110,11 +132,16 @@ def extract_ohp_dual(video_path):
                 f.detected = True
                 for j, lm in enumerate(vr.pose_landmarks[0]):
                     f.norm[j] = np.array([lm.x, lm.y], float)
-                    f.px[j] = np.array([lm.x * w, lm.y * h], float)
+                    f.px[j] = np.array([lm.x * fw, lm.y * fh], float)
                     f.vis[j] = lm.visibility
+                if overlay_proc:
+                    draw_skeleton(bgr, vr.pose_landmarks[0])
             video_frames.append(f)
 
-            ir = image_lm.detect(image)   # IMAGE mode -- do not change
+            if overlay_proc:
+                write_overlay_frame(overlay_proc, bgr)
+
+            ir = image_lm.detect(image)   # IMAGE mode -- do not change (analysis only, not drawn)
             if ir.pose_landmarks:
                 feat = get_geometry(ir.pose_landmarks[0])
                 if feat:
@@ -125,6 +152,8 @@ def extract_ohp_dual(video_path):
             if i % 15 == 0:
                 print(json.dumps({"type": "progress", "stage": "extract", "current": i, "total": total_frames}), flush=True)
     cap.release()
+    if overlay_proc:
+        close_overlay_writer(overlay_proc)
 
     scores = {}
     for side, idx in SIDE_LANDMARKS.items():
@@ -217,13 +246,17 @@ def analyze_upper_body(bonus_df):
 
 def main():
     video_path, out_path = sys.argv[1], sys.argv[2]
-    knee_df, bonus_df = extract_ohp_dual(video_path)
+    overlay_name = f"{Path(video_path).stem}_{uuid.uuid4().hex[:8]}_overlay.mp4"
+    overlay_path = config.OVERLAY_DIR / overlay_name
+
+    knee_df, bonus_df = extract_ohp_dual(video_path, overlay_path)
     bonus_verdict = analyze_upper_body(bonus_df)
 
     payload = {
         "video_name": Path(video_path).name,
         "knee_rows": knee_df.replace({np.nan: None}).to_dict(orient="records"),
         "bonus": bonus_verdict,
+        "overlay_url": f"{config.OVERLAY_URL_PREFIX}/{overlay_name}" if overlay_path.exists() and overlay_path.stat().st_size > 0 else None,
     }
     with open(out_path, "w") as f:
         json.dump(payload, f)

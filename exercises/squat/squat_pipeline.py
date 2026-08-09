@@ -1,13 +1,15 @@
 """
 Squat — single stage (runs in SquatEnv: mediapipe legacy Solutions API,
 no TensorFlow). Ported from squat_final.ipynb verbatim. Whole-clip
-aggregation (no rep segmentation exists yet). Streams progress every
-10 frames, then a wrapped result line.
+aggregation (no rep segmentation exists yet). Also draws the skeleton
+onto each frame and writes a browser-playable annotated overlay video.
+Streams progress every 10 frames, then a wrapped result line.
 Usage: python squat_pipeline.py <video_path>
 """
 import json
 import os
 import sys
+import uuid
 from pathlib import Path
 
 os.environ.setdefault("PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION", "python")  # must precede mediapipe import
@@ -17,10 +19,13 @@ import mediapipe as mp
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))  # app root
+import config
 from contracts import ExerciseResult
+from overlay import open_overlay_writer, write_overlay_frame, close_overlay_writer
 
 CONFIG_PATH = Path(__file__).resolve().parent / "models" / "squat_config.json"
 mp_pose = mp.solutions.pose
+mp_drawing = mp.solutions.drawing_utils
 
 
 def get_landmark_xy(landmarks, name, w, h):
@@ -52,13 +57,16 @@ def check_torso_lean(peak_torso_lean_angle, threshold):
     return peak_torso_lean_angle > threshold
 
 
-def analyze_video(video_path, cfg):
+def analyze_video(video_path, cfg, overlay_path):
     depth_cfg = cfg["checks"]["depth"]
     torso_cfg = cfg["checks"]["torso_lean"]
 
     cap = cv2.VideoCapture(str(video_path))
     w, h = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)), int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
     total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT)) or None
+    fps = cap.get(cv2.CAP_PROP_FPS) or 30
+
+    overlay_proc = open_overlay_writer(overlay_path, w, h, fps) if w and h else None
 
     pose = mp_pose.Pose(**cfg["pose_config"])
 
@@ -74,6 +82,9 @@ def analyze_video(video_path, cfg):
         rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         result = pose.process(rgb)
         if result.pose_landmarks:
+            if overlay_proc:
+                mp_drawing.draw_landmarks(frame, result.pose_landmarks, mp_pose.POSE_CONNECTIONS)
+
             side = get_best_side_landmarks(result.pose_landmarks)
             hip = get_landmark_xy(result.pose_landmarks, f"{side}_HIP", w, h)
             knee = get_landmark_xy(result.pose_landmarks, f"{side}_KNEE", w, h)
@@ -93,6 +104,9 @@ def analyze_video(video_path, cfg):
             if heel_y_baseline is not None:
                 heel_lifts.append((heel_y_baseline - heel[1]) / (shin_length + 1e-6))
 
+        if overlay_proc:
+            write_overlay_frame(overlay_proc, frame)
+
         if frame_idx % 10 == 0 and hip_knee_diffs:
             print(json.dumps({
                 "type": "progress", "stage": "squat", "current": frame_idx, "total": total_frames,
@@ -104,6 +118,8 @@ def analyze_video(video_path, cfg):
 
     cap.release()
     pose.close()
+    if overlay_proc:
+        close_overlay_writer(overlay_proc)
 
     if not hip_knee_diffs:
         return None
@@ -128,13 +144,19 @@ def _emit_result(result: ExerciseResult):
 def main():
     video_path = Path(sys.argv[1])
     cfg = json.loads(CONFIG_PATH.read_text())
-    verdict = analyze_video(video_path, cfg)
+
+    overlay_name = f"{video_path.stem}_{uuid.uuid4().hex[:8]}_overlay.mp4"
+    overlay_path = config.OVERLAY_DIR / overlay_name
+
+    verdict = analyze_video(video_path, cfg, overlay_path)
+    overlay_url = f"{config.OVERLAY_URL_PREFIX}/{overlay_name}" if overlay_path.exists() and overlay_path.stat().st_size > 0 else None
 
     if verdict is None:
         _emit_result(ExerciseResult(
             exercise="squat", video=video_path.name, ok=True,
             summary="No pose detected in this video.",
             notes=["Check camera angle (3/4 view expected) and lighting."],
+            overlay_url=overlay_url,
         ))
         return
 
@@ -161,6 +183,7 @@ def main():
             "peak_heel_lift": verdict["peak_heel_lift"],
         },
         notes=notes,
+        overlay_url=overlay_url,
     ))
 
 

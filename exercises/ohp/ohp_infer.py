@@ -90,7 +90,7 @@ def score_knee(knee_df: pd.DataFrame):
     return score, score >= KNEE_THRESHOLD
 
 
-def make_ohp_report(knee_label: bool, knee_score: float, upper: dict) -> ExerciseResult:
+def make_ohp_report(knee_label: bool, knee_score: float, upper: dict, overlay_url) -> ExerciseResult:
     issues, notes = [], []
 
     if knee_label:
@@ -127,7 +127,8 @@ def make_ohp_report(knee_label: bool, knee_score: float, upper: dict) -> Exercis
         if upper.get(key) is not None:
             scores[key] = round(upper[key], 4)
 
-    return ExerciseResult(exercise="ohp", video="", ok=True, summary=summary, flags=flags, scores=scores, notes=notes)
+    return ExerciseResult(exercise="ohp", video="", ok=True, summary=summary, flags=flags, scores=scores,
+                           notes=notes, overlay_url=overlay_url)
 
 
 def main():
@@ -137,7 +138,7 @@ def main():
     knee_df = pd.DataFrame(payload["knee_rows"])
     knee_score, knee_label = score_knee(knee_df)
 
-    result = make_ohp_report(knee_label, knee_score, payload["bonus"])
+    result = make_ohp_report(knee_label, knee_score, payload["bonus"], payload.get("overlay_url"))
     result.video = payload["video_name"]
     print(json.dumps({"type": "result", "result": json.loads(result.to_json())}), flush=True)
 

@@ -17,6 +17,7 @@ class ExerciseResult:
     scores: Dict[str, float] = field(default_factory=dict)
     notes: List[str] = field(default_factory=list)
     error: Optional[str] = None
+    overlay_url: Optional[str] = None   # /static/overlays/<file>.mp4 -- landmark-annotated playback, when available
 
     def to_json(self) -> str:
         return json.dumps(asdict(self))
