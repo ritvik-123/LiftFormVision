@@ -32,7 +32,7 @@
   .pick input:checked + label{ border-color:var(--gold); background:var(--surface-2); }
   .pick input:checked + label svg{ color:var(--gold); }
   .pick input:focus-visible + label{ outline:2px solid var(--gold); outline-offset:2px; }
-  .drop{ border:1.5px dashed var(--line); border-radius:10px; background:var(--surface); padding:26px 16px; text-align:center; cursor:pointer; transition:border-color .15s ease, background .15s ease; position:relative; }
+  .drop{ display:block; border:1.5px dashed var(--line); border-radius:10px; background:var(--surface); padding:26px 16px; text-align:center; cursor:pointer; transition:border-color .15s ease, background .15s ease; position:relative; }
   .drop.drag{ border-color:var(--gold); background:var(--surface-2); }
   .drop input{ position:absolute; inset:0; width:100%; height:100%; opacity:0; cursor:pointer; margin:0; }
   .drop-label{ font-size:14px; }
