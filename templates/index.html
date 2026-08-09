@@ -43,7 +43,33 @@
   button:disabled{ opacity:.6; cursor:default; }
   button:focus-visible{ outline:2px solid var(--text); outline-offset:3px; }
 
-  /* live panel */
+  /* mode toggle */
+  .mode-toggle{ display:flex; gap:8px; margin-bottom:24px; }
+  .mode-btn{ flex:1; margin:0; padding:11px; border-radius:8px; border:1px solid var(--line); background:var(--surface); color:var(--muted); font-family:inherit; font-size:12.5px; font-weight:600; letter-spacing:.05em; text-transform:uppercase; cursor:pointer; transition:all .15s ease; }
+  .mode-btn.active{ border-color:var(--gold); color:var(--gold); background:var(--surface-2); }
+
+  /* camera mode */
+  .camera-wrap{ display:none; }
+  .camera-wrap.active{ display:block; }
+  .camera-preview{ width:100%; aspect-ratio:4/3; object-fit:cover; border-radius:10px; border:1px solid var(--line); background:#000; display:block; }
+  .camera-btn{ width:100%; margin-top:16px; padding:14px; border:none; border-radius:10px; background:var(--gold); color:#1b1918; font-family:"Arial Narrow",Helvetica,Arial,sans-serif; font-weight:700; text-transform:uppercase; letter-spacing:.06em; font-size:15px; cursor:pointer; }
+  .camera-btn.stop{ background:var(--flag); color:var(--text); }
+  .rec-status{ display:flex; align-items:center; gap:8px; margin-top:12px; font-size:12.5px; color:var(--muted); min-height:16px; }
+  .rec-dot{ width:8px; height:8px; border-radius:50%; background:var(--flag); flex-shrink:0; display:none; }
+  .rec-dot.active{ display:block; animation:pulse 1.2s ease-in-out infinite; }
+  @keyframes pulse{ 0%,100%{ opacity:1; } 50%{ opacity:.25; } }
+
+  .feed{ margin-top:18px; display:flex; flex-direction:column; gap:8px; max-height:360px; overflow-y:auto; }
+  .feed-item{ border:1px solid var(--line); border-radius:10px; padding:11px 13px; background:var(--surface); }
+  .feed-item.fail{ border-color:rgba(193,68,60,.35); }
+  .feed-top{ display:flex; justify-content:space-between; align-items:baseline; gap:10px; margin-bottom:4px; }
+  .feed-time{ font-size:11px; color:var(--muted); font-variant-numeric:tabular-nums; }
+  .feed-clip{ font-size:11px; color:var(--gold); text-decoration:none; }
+  .feed-clip:hover{ text-decoration:underline; }
+  .feed-summary{ font-size:13.5px; line-height:1.4; }
+  .feed-item.fail .feed-summary{ color:#e39089; }
+
+  /* live panel (upload mode) */
   .live{ display:none; }
   .live.active{ display:block; }
   .live .stage{ font-size:13px; color:var(--muted); margin-bottom:8px; }
@@ -54,9 +80,10 @@
   .metric{ margin-top:14px; font-size:13px; color:var(--muted); display:flex; justify-content:space-between; }
   .metric span:last-child{ color:var(--gold); font-variant-numeric:tabular-nums; }
 
-  /* results panel */
+  /* results panel (upload mode) */
   .results{ display:none; }
   .results.active{ display:block; }
+  .overlay-video{ width:100%; border-radius:10px; border:1px solid var(--line); margin-bottom:20px; display:block; background:#000; }
   .status{ display:flex; align-items:flex-start; gap:12px; padding:18px 20px; border-radius:12px; margin-bottom:24px; border:1px solid var(--line); }
   .status.ok{ background:rgba(143,168,136,.1); border-color:rgba(143,168,136,.35); }
   .status.fail{ background:rgba(193,68,60,.1); border-color:rgba(193,68,60,.35); }
@@ -87,43 +114,59 @@
       <svg class="arc" viewBox="0 0 16 16" fill="none"><path d="M2 13.5A8 8 0 0 1 12.5 3" stroke="currentColor" stroke-width="1.4"/><path d="M2 13.5v-3M2 13.5h3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
       Local analysis
     </div>
-    <h1 id="title">Form Check</h1>
-    <p class="sub" id="subtitle">Pick your lift, drop the clip. Runs entirely on this machine.</p>
+    <h1>Form Check</h1>
+    <p class="sub">Pick your lift, then upload a clip or go live. Runs entirely on this machine.</p>
 
     <div id="flash"></div>
 
-    <form action="{{ url_for('analyze') }}" method="post" enctype="multipart/form-data" id="form">
-      <fieldset>
-        <legend>Exercise</legend>
-        <div class="picks">
-          {% for key, spec in exercises.items() %}
-          <div class="pick">
-            <input type="radio" name="exercise" id="ex-{{ key }}" value="{{ key }}" {% if loop.first %}checked{% endif %} required>
-            <label for="ex-{{ key }}">
-              {% if key == 'squat' %}
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="5" r="2" stroke="currentColor" stroke-width="1.6"/><path d="M12 7v4l-3 3v6M12 11l3 3v6M6 17h3M15 17h3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
-              {% else %}
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="5" r="2" stroke="currentColor" stroke-width="1.6"/><path d="M12 7v6M12 9l-4-3M12 9l4-3M12 13l-3 6M12 13l3 6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
-              {% endif %}
-              <span class="name">{{ spec.label }}</span>
-            </label>
-          </div>
-          {% endfor %}
+    <fieldset>
+      <legend>Exercise</legend>
+      <div class="picks">
+        {% for key, spec in exercises.items() %}
+        <div class="pick">
+          <input type="radio" name="exercise" id="ex-{{ key }}" value="{{ key }}" {% if loop.first %}checked{% endif %}>
+          <label for="ex-{{ key }}">
+            {% if key == 'squat' %}
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="5" r="2" stroke="currentColor" stroke-width="1.6"/><path d="M12 7v4l-3 3v6M12 11l3 3v6M6 17h3M15 17h3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+            {% else %}
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="5" r="2" stroke="currentColor" stroke-width="1.6"/><path d="M12 7v6M12 9l-4-3M12 9l4-3M12 13l-3 6M12 13l3 6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+            {% endif %}
+            <span class="name">{{ spec.label }}</span>
+          </label>
         </div>
-      </fieldset>
+        {% endfor %}
+      </div>
+    </fieldset>
 
-      <fieldset>
-        <legend>Video</legend>
-        <label class="drop" id="drop" for="video">
-          <input type="file" name="video" id="video" accept="video/*" required>
-          <div class="drop-label">Drag a clip here, or click to browse</div>
-          <div class="drop-hint">.mp4 · .mov · .avi</div>
-          <div class="filename" id="filename"></div>
-        </label>
-      </fieldset>
+    <div class="mode-toggle">
+      <button type="button" class="mode-btn active" id="mode-upload-btn">Upload video</button>
+      <button type="button" class="mode-btn" id="mode-camera-btn">Live camera</button>
+    </div>
 
-      <button type="submit" id="submit">Run analysis</button>
-    </form>
+    <div id="upload-mode">
+      <form id="form">
+        <fieldset>
+          <legend>Video</legend>
+          <label class="drop" id="drop" for="video">
+            <input type="file" name="video" id="video" accept="video/*" required>
+            <div class="drop-label">Drag a clip here, or click to browse</div>
+            <div class="drop-hint">.mp4 · .mov · .avi</div>
+            <div class="filename" id="filename"></div>
+          </label>
+        </fieldset>
+        <button type="submit" id="submit">Run analysis</button>
+      </form>
+    </div>
+
+    <div class="camera-wrap" id="camera-mode">
+      <video class="camera-preview" id="camera-preview" autoplay muted playsinline></video>
+      <button type="button" class="camera-btn" id="camera-toggle">Start camera</button>
+      <div class="rec-status">
+        <span class="rec-dot" id="rec-dot"></span>
+        <span id="rec-status-text"></span>
+      </div>
+      <div class="feed" id="feed"></div>
+    </div>
 
     <div class="live" id="live">
       <div class="stage" id="stage-label">Starting…</div>
@@ -141,19 +184,59 @@
   </div>
 
 <script>
+  const ANALYZE_URL = "{{ url_for('analyze') }}";
+
+  const flashEl = document.getElementById('flash');
+  function showFlash(msg) { flashEl.innerHTML = `<div class="flash">${msg}</div>`; }
+  function getExercise() { return document.querySelector('input[name="exercise"]:checked').value; }
+
+  // ---- shared streaming call, used by both upload form and camera loop ----
+  async function analyzeBlob(exercise, blob, filename, handlers) {
+    const formData = new FormData();
+    formData.append('exercise', exercise);
+    formData.append('video', blob, filename);
+
+    const res = await fetch(ANALYZE_URL, { method: 'POST', body: formData });
+
+    if (!res.ok) {
+      const err = await res.json();
+      handlers.onError(err.message || 'Something went wrong.');
+      return;
+    }
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop();
+
+      for (const line of lines) {
+        if (!line.trim()) continue;
+        const evt = JSON.parse(line);
+        if (evt.type === 'progress' && handlers.onProgress) handlers.onProgress(evt);
+        else if (evt.type === 'error') handlers.onError(evt.message);
+        else if (evt.type === 'result') handlers.onResult(evt.result);
+      }
+    }
+  }
+
+  // ---------------------------- upload mode ----------------------------
   const form = document.getElementById('form');
   const submitBtn = document.getElementById('submit');
   const dropZone = document.getElementById('drop');
   const videoInput = document.getElementById('video');
   const filenameEl = document.getElementById('filename');
-  const flashEl = document.getElementById('flash');
   const liveEl = document.getElementById('live');
   const stageLabel = document.getElementById('stage-label');
   const bar = document.getElementById('bar');
   const metricsEl = document.getElementById('metrics');
   const resultsEl = document.getElementById('results');
   const resultsBody = document.getElementById('results-body');
-  const subtitle = document.getElementById('subtitle');
   const againBtn = document.getElementById('again');
 
   videoInput.addEventListener('change', () => {
@@ -172,10 +255,6 @@
     }
   });
 
-  function showFlash(msg) {
-    flashEl.innerHTML = `<div class="flash">${msg}</div>`;
-  }
-
   function pillRow(key, val, scores) {
     const label = key.replace(/_/g, ' ');
     const score = key in scores ? `<span class="score">${scores[key]}</span>` : '';
@@ -189,6 +268,9 @@
     resultsEl.classList.add('active');
 
     let html = '';
+    if (result.overlay_url) {
+      html += `<video class="overlay-video" src="${result.overlay_url}" autoplay muted loop playsinline controls></video>`;
+    }
     if (result.ok) {
       html += `<div class="status ok"><span class="dot"></span><p>${result.summary}</p></div>`;
       if (result.notes && result.notes.length) {
@@ -226,47 +308,19 @@
     resultsEl.classList.remove('active');
     liveEl.classList.add('active');
     bar.style.width = '0%';
+    bar.classList.remove('indeterminate');
     metricsEl.innerHTML = '';
     submitBtn.disabled = true;
     submitBtn.textContent = 'Analyzing…';
 
-    const formData = new FormData(form);
+    const file = videoInput.files[0];
 
     try {
-      const res = await fetch(form.action, { method: 'POST', body: formData });
-
-      if (!res.ok) {
-        const err = await res.json();
-        showFlash(err.message || 'Something went wrong.');
-        liveEl.classList.remove('active');
-        submitBtn.disabled = false;
-        submitBtn.textContent = 'Run analysis';
-        return;
-      }
-
-      const reader = res.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = '';
-
-      while (true) {
-        const { value, done } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop(); // keep the last (possibly partial) line
-
-        for (const line of lines) {
-          if (!line.trim()) continue;
-          const evt = JSON.parse(line);
-          if (evt.type === 'progress') updateProgress(evt);
-          else if (evt.type === 'error') {
-            showFlash(evt.message);
-            liveEl.classList.remove('active');
-          } else if (evt.type === 'result') {
-            renderResult(evt.result);
-          }
-        }
-      }
+      await analyzeBlob(getExercise(), file, file.name, {
+        onProgress: updateProgress,
+        onResult: renderResult,
+        onError: (msg) => { showFlash(msg); liveEl.classList.remove('active'); },
+      });
     } catch (err) {
       showFlash('Connection lost during analysis.');
       liveEl.classList.remove('active');
@@ -281,6 +335,136 @@
     form.reset();
     filenameEl.textContent = '';
   });
+
+  // ---------------------------- camera mode ----------------------------
+  const cameraPreview = document.getElementById('camera-preview');
+  const cameraToggleBtn = document.getElementById('camera-toggle');
+  const recDot = document.getElementById('rec-dot');
+  const recStatusText = document.getElementById('rec-status-text');
+  const feedEl = document.getElementById('feed');
+
+  const CHUNK_MS = 5000;
+  let cameraStream = null;
+  let cameraActive = false;
+  let currentRecorder = null;
+  let busyAnalyzing = false;
+  let pendingBlob = null;
+
+  function addFeedItem(result) {
+    const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    const clipLink = result.overlay_url ? `<a class="feed-clip" href="${result.overlay_url}" target="_blank">View clip</a>` : '';
+    const el = document.createElement('div');
+    el.className = 'feed-item' + (result.ok === false ? ' fail' : '');
+    el.innerHTML = `<div class="feed-top"><span class="feed-time">${time}</span>${clipLink}</div><div class="feed-summary">${result.summary}</div>`;
+    feedEl.prepend(el);
+  }
+
+  async function uploadChunk(blob) {
+    busyAnalyzing = true;
+    recStatusText.textContent = 'Analyzing…';
+    try {
+      await analyzeBlob(getExercise(), blob, 'chunk.webm', {
+        onResult: (result) => { addFeedItem(result); },
+        onError: (msg) => { addFeedItem({ ok: false, summary: msg }); },
+      });
+    } catch (err) {
+      addFeedItem({ ok: false, summary: 'Connection lost during analysis.' });
+    }
+    busyAnalyzing = false;
+    recStatusText.textContent = cameraActive ? 'Recording…' : '';
+
+    if (pendingBlob) {
+      const next = pendingBlob;
+      pendingBlob = null;
+      uploadChunk(next);
+    }
+  }
+
+  function handleChunk(blob) {
+    if (blob.size === 0) return;
+    if (busyAnalyzing) {
+      pendingBlob = blob; // latest-wins: older pending chunk gets dropped
+      return;
+    }
+    uploadChunk(blob);
+  }
+
+  function recordChunkLoop() {
+    if (!cameraActive) return;
+    const mimeType = MediaRecorder.isTypeSupported('video/webm;codecs=vp9')
+      ? 'video/webm;codecs=vp9' : 'video/webm';
+    const recorder = new MediaRecorder(cameraStream, { mimeType });
+    currentRecorder = recorder;
+    const chunks = [];
+
+    recorder.ondataavailable = (e) => { if (e.data.size) chunks.push(e.data); };
+    recorder.onstop = () => {
+      const blob = new Blob(chunks, { type: mimeType });
+      handleChunk(blob);
+      if (cameraActive) recordChunkLoop(); // start next 5s segment immediately
+    };
+
+    recorder.start();
+    setTimeout(() => { if (recorder.state !== 'inactive') recorder.stop(); }, CHUNK_MS);
+  }
+
+  async function startCamera() {
+    try {
+      cameraStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+    } catch (err) {
+      showFlash('Could not access camera: ' + err.message);
+      return;
+    }
+    cameraPreview.srcObject = cameraStream;
+    cameraActive = true;
+    cameraToggleBtn.textContent = 'Stop camera';
+    cameraToggleBtn.classList.add('stop');
+    recDot.classList.add('active');
+    recStatusText.textContent = 'Recording…';
+    recordChunkLoop();
+  }
+
+  function stopCamera() {
+    cameraActive = false;
+    if (currentRecorder && currentRecorder.state !== 'inactive') currentRecorder.stop();
+    if (cameraStream) cameraStream.getTracks().forEach(t => t.stop());
+    cameraPreview.srcObject = null;
+    cameraToggleBtn.textContent = 'Start camera';
+    cameraToggleBtn.classList.remove('stop');
+    recDot.classList.remove('active');
+    recStatusText.textContent = '';
+  }
+
+  cameraToggleBtn.addEventListener('click', () => {
+    if (cameraActive) stopCamera(); else startCamera();
+  });
+
+  // ---------------------------- mode switching ----------------------------
+  const uploadModeEl = document.getElementById('upload-mode');
+  const cameraModeEl = document.getElementById('camera-mode');
+  const modeUploadBtn = document.getElementById('mode-upload-btn');
+  const modeCameraBtn = document.getElementById('mode-camera-btn');
+
+  function switchMode(mode) {
+    flashEl.innerHTML = '';
+    if (mode === 'camera') {
+      liveEl.classList.remove('active');
+      resultsEl.classList.remove('active');
+      uploadModeEl.style.display = 'none';
+      cameraModeEl.classList.add('active');
+      modeUploadBtn.classList.remove('active');
+      modeCameraBtn.classList.add('active');
+    } else {
+      if (cameraActive) stopCamera();
+      uploadModeEl.style.display = 'block';
+      cameraModeEl.classList.remove('active');
+      modeUploadBtn.classList.add('active');
+      modeCameraBtn.classList.remove('active');
+    }
+  }
+
+  modeUploadBtn.addEventListener('click', () => switchMode('upload'));
+  modeCameraBtn.addEventListener('click', () => switchMode('camera'));
 </script>
 </body>
 </html>
