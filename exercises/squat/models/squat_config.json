@@ -1,0 +1,49 @@
+{
+  "exercise": "squat",
+  "pose_backend": "mediapipe.solutions.pose",
+  "pose_config": {
+    "static_image_mode": false,
+    "model_complexity": 1,
+    "min_detection_confidence": 0.5,
+    "min_tracking_confidence": 0.5
+  },
+  "checks": {
+    "depth": {
+      "feature": "hip_knee_y_diff_norm",
+      "formula": "(hip_y - knee_y) / femur_length; positive = hip below knee (deep)",
+      "aggregation": "max over rep (deepest point reached)",
+      "threshold": -0.111,
+      "rule": "flag shallow if aggregated_value < threshold",
+      "validated": true,
+      "test_metrics": {
+        "accuracy": 0.803,
+        "precision": 0.794,
+        "recall": 0.905,
+        "f1": 0.846
+      }
+    },
+    "torso_lean": {
+      "feature": "torso_lean_angle",
+      "formula": "angle between hip->shoulder vector and vertical, degrees",
+      "aggregation": "max over rep (peak lean)",
+      "threshold": 49.3,
+      "rule": "flag as heuristic tip if aggregated_value > threshold",
+      "validated": false,
+      "note": "95th percentile of clean-clip reference distribution; not calibrated against direct ground truth"
+    },
+    "heel_lift": {
+      "feature": "heel_lift",
+      "formula": "(heel_y_baseline - heel_y) / shin_length; baseline = mean heel_y of first 5 detected frames",
+      "aggregation": "max over rep",
+      "threshold": null,
+      "rule": "report only, no flag",
+      "validated": false,
+      "note": "cross-check against knee-error clips showed reversed direction from assumed 'bad form' interpretation; likely reflects intentional heel-elevation technique, not a fault"
+    }
+  },
+  "known_limitations": {
+    "knees_inward": "explored, AUC~0.53 (near chance), not shipped \u2014 consistent with published literature showing this is a hard problem even for sophisticated models",
+    "knees_forward": "explored via 3 feature variants (lateral offset, shin angle, knee-vs-toe), all AUC~0.5, not shipped \u2014 likely a 3/4-angle camera-geometry limitation, not a code issue",
+    "multi_person_clips": "~23% of training clips had a spotter present; deployment assumes single-person frame, not handled"
+  }
+}
