@@ -9,3 +9,7 @@ uploads/*.mov
 uploads/*.avi
 !uploads/.gitkeep
 !temp/.gitkeep
+
+# no mp4 needed
+static/overlays/*.mp4
+!static/overlays/.gitkeep
