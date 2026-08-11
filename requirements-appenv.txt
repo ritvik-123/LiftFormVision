@@ -1,0 +1,6 @@
+# AppEnv — runs the Flask app only.
+# Deliberately excludes MediaPipe/TensorFlow: this env only dispatches
+# work to the other three envs via subprocess + JSON, it never imports
+# CV/ML libraries itself.
+Flask>=3.0
+Werkzeug>=3.0

@@ -1,0 +1,7 @@
+# OHPBonus — MediaPipe Tasks PoseLandmarker API (pose extraction +
+# upper-body rule diagnostics for OHP). No TensorFlow in this env —
+# it hands off features to DeepGPU for knee-CNN scoring.
+mediapipe==0.10.14
+opencv-python==4.13.0.92
+numpy==2.2.6
+pandas==2.3.1
