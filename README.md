@@ -74,6 +74,11 @@ contracts.py            Shared JSON result schema every exercise subprocess must
 exercise_registry.py    Strategy pattern — registers each exercise's pipeline entry point
 runner.py               Subprocess orchestration / pipeline chaining (e.g. OHP's two-stage handoff)
 
+requirements-appenv.txt      Pinned dependencies for AppEnv (Flask only)
+requirements-squatenv.txt    Pinned dependencies for SquatEnv (legacy MediaPipe Solutions API)
+requirements-ohpbonus.txt    Pinned dependencies for OHPBonus (MediaPipe Tasks API, pose + rules)
+requirements-deepgpu.txt     Pinned dependencies for DeepGPU (TensorFlow, knee-CNN inference)
+
 Envs/
   AppEnv/                Virtual environment for the Flask app itself (no MediaPipe/TensorFlow)
   (SquatEnv, OHPBonus, DeepGPU are set up locally — see Setup below)
@@ -86,29 +91,38 @@ temp/                     Scratch space for intermediate pipeline artifacts
 
 ## Setup
 
-The app requires **four** Python environments because of the MediaPipe/TensorFlow conflict described above. Package versions below match what the pipelines were built and validated against.
+The app requires **four** Python environments because of the MediaPipe/TensorFlow conflict described above. Each has its own pinned `requirements-*.txt` (in this repo's root), matching the versions each pipeline was built and validated against.
 
 ```bash
 # 1. AppEnv — runs Flask only, no CV/ML libraries
 python -m venv Envs/AppEnv
 Envs/AppEnv/Scripts/activate     # or source Envs/AppEnv/bin/activate on Linux/Mac
-pip install flask
+pip install -r requirements-appenv.txt
 
 # 2. SquatEnv — legacy MediaPipe Solutions API
 python -m venv Envs/SquatEnv
 Envs/SquatEnv/Scripts/activate
-pip install mediapipe==0.10.14 opencv-python numpy pandas scikit-learn
+pip install -r requirements-squatenv.txt
 
 # 3. OHPBonus — MediaPipe Tasks PoseLandmarker API (pose + upper-body rules), no TensorFlow
 python -m venv Envs/OHPBonus
 Envs/OHPBonus/Scripts/activate
-pip install mediapipe==0.10.14 opencv-python numpy pandas
+pip install -r requirements-ohpbonus.txt
 
 # 4. DeepGPU — TensorFlow, for knee-CNN inference
 python -m venv Envs/DeepGPU
 Envs/DeepGPU/Scripts/activate
-pip install tensorflow==2.21.0 numpy pandas scikit-learn joblib
+pip install -r requirements-deepgpu.txt
 ```
+
+| File | Environment | Key packages |
+|---|---|---|
+| `requirements-appenv.txt` | AppEnv | Flask, Werkzeug |
+| `requirements-squatenv.txt` | SquatEnv | mediapipe 0.10.14, opencv-python, scikit-learn, protobuf 4.25.3 |
+| `requirements-ohpbonus.txt` | OHPBonus | mediapipe 0.10.14, opencv-python, pandas |
+| `requirements-deepgpu.txt` | DeepGPU | tensorflow 2.21.0, scikit-learn, protobuf 7.35.1 |
+
+The two `protobuf` pins are intentionally different — this is the version conflict the whole multi-env architecture exists to route around. Do not try to unify these into one environment.
 
 Point `config.py` at the interpreter paths for each environment (`SquatEnv`, `OHPBonus`, `DeepGPU`), and place the trained artifacts exported from [`298-Major-Project`](https://github.com/ritvik-123/298-Major-Project) — `knee_temporal_cnn.keras`, `knee_frame_preprocessor.joblib`, `squat_config.json`, and the MediaPipe `pose_landmarker*.task` files — under the relevant `exercises/<exercise>/models/` directory.
 
