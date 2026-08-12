@@ -4,6 +4,11 @@ A locally-deployed computer-vision application that analyzes barbell exercise vi
 
 This repo is the **deployed application**. The models, thresholds, and feature-engineering work it runs were developed in [`298-Major-Project`](https://github.com/ritvik-123/298-Major-Project); this repo is where that work gets wired into an actual runnable web app.
 
+## Demo
+
+https://github.com/user-attachments/assets/b2d78b69-471a-407a-8da7-f836f8cba251
+
+
 ## What It Does
 
 - **Upload mode** — pick an exercise, upload a clip, watch progress stream in, then see the result with a skeleton overlay rendered inline as a real, playable H.264 video.
